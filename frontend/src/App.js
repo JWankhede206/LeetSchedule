@@ -107,7 +107,17 @@ function App() {
     useEffect(() => {
         const savedUser = localStorage.getItem('currentUser');
         if (savedUser) {
-            setCurrentUser(JSON.parse(savedUser));
+            const user = JSON.parse(savedUser);
+            // Ensure all tasks have status field for backwards compatibility
+            if (user.tasks) {
+                Object.keys(user.tasks).forEach(section => {
+                    user.tasks[section] = user.tasks[section].map(task => ({
+                        ...task,
+                        status: task.status || "Attempted" // Default to Attempted if not set
+                    }));
+                });
+            }
+            setCurrentUser(user);
         }
         setIsLoading(false);
     }, []);
@@ -124,6 +134,17 @@ function App() {
                 lastName: users[email].lastName,
                 tasks: users[email].tasks || {} 
             };
+            
+            // Ensure all tasks have status field for backwards compatibility
+            if (user.tasks) {
+                Object.keys(user.tasks).forEach(section => {
+                    user.tasks[section] = user.tasks[section].map(task => ({
+                        ...task,
+                        status: task.status || "Attempted" // Default to Attempted if not set
+                    }));
+                });
+            }
+            
             setCurrentUser(user);
             localStorage.setItem('currentUser', JSON.stringify(user));
             return { success: true };
@@ -216,6 +237,15 @@ function App() {
         setSelectedProblem({ ...selectedProblem, notes });
     };
 
+    const updateProblemStatus = (section, index, newStatus) => {
+        const updatedTasks = { ...currentUser.tasks };
+        updatedTasks[section][index] = {
+            ...updatedTasks[section][index],
+            status: newStatus
+        };
+        updateUserTasks(updatedTasks);
+    };
+
     if (isLoading) {
         return <div style={{ textAlign: 'center', marginTop: '2rem' }}>Loading...</div>;
     }
@@ -229,6 +259,7 @@ function App() {
                         onTasksUpdate={updateUserTasks}
                         onLogout={handleLogout}
                         onProblemClick={navigateToProblem}
+                        onStatusUpdate={updateProblemStatus}
                     />
                 ) : (
                     <ProblemDetails 
