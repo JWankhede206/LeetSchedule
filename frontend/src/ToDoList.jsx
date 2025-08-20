@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import ApiService from "./api";
 
 function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdate }) {
     const sections = [
@@ -13,12 +14,15 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
         "DP",
     ];
 
-    const [tasks, setTasks] = useState(user.tasks || 
-        sections.reduce((acc, section) => {
-            acc[section] = [];
+    const initializeTasks = (userTasks) => {
+        const initialized = sections.reduce((acc, section) => {
+            acc[section] = userTasks?.[section] || [];
             return acc;
-        }, {})
-    );
+        }, {});
+        return initialized;
+    };
+
+    const [tasks, setTasks] = useState(() => initializeTasks(user.tasks));
 
     const [showForm, setShowForm] = useState(
         sections.reduce((acc, section) => {
@@ -44,7 +48,10 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
     const [editingTask, setEditingTask] = useState(null);
     const [editTask, setEditTask] = useState({ name: "", difficulty: "Easy", status: "Attempted" });
 
-    // Update tasks and sync with parent component
+    React.useEffect(() => {
+        setTasks(initializeTasks(user.tasks));
+    }, [user.tasks]);
+
     const updateTasks = (newTasks) => {
         setTasks(newTasks);
         onTasksUpdate(newTasks);
@@ -94,19 +101,33 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
         setEditTask({ name: "", difficulty: "Easy", status: "Attempted" });
     }
 
-    function saveEdit() {
+    async function saveEdit() {
         if (editTask.name.trim() !== "" && editingTask) {
             const { section, index } = editingTask;
-            const updatedTasks = { ...tasks };
-            updatedTasks[section][index] = {
-                ...updatedTasks[section][index],
-                name: editTask.name,
-                difficulty: editTask.difficulty,
-                status: editTask.status
-            };
-            updateTasks(updatedTasks);
-            setEditingTask(null);
-            setEditTask({ name: "", difficulty: "Easy", status: "Attempted" });
+            const task = tasks[section][index];
+            
+            try {
+                await ApiService.updateProblem(task.id, {
+                    name: editTask.name,
+                    difficulty: editTask.difficulty,
+                    status: editTask.status,
+                    notes: task.notes || ""
+                });
+
+                const updatedTasks = { ...tasks };
+                updatedTasks[section][index] = {
+                    ...updatedTasks[section][index],
+                    name: editTask.name,
+                    difficulty: editTask.difficulty,
+                    status: editTask.status
+                };
+                updateTasks(updatedTasks);
+                setEditingTask(null);
+                setEditTask({ name: "", difficulty: "Easy", status: "Attempted" });
+            } catch (error) {
+                console.error('Failed to update problem:', error);
+                alert('Failed to update problem. Please try again.');
+            }
         }
     }
 
@@ -122,38 +143,64 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
         setEditTask({ ...editTask, status: event.target.value });
     }
 
-    function saveTask(section) {
+    async function saveTask(section) {
         if (newTask[section].name.trim() !== "") {
-            const taskWithDate = {
-                ...newTask[section],
-                dateAdded: new Date().toISOString(),
-                notes: ""
-            };
-            
-            const updatedTasks = {
-                ...tasks,
-                [section]: [...tasks[section], taskWithDate],
-            };
-            updateTasks(updatedTasks);
-            
-            setNewTask({
-                ...newTask,
-                [section]: { name: "", difficulty: "Easy", status: "Attempted" },
-            });
-            setShowForm({ ...showForm, [section]: false });
+            try {
+                const response = await ApiService.createProblem({
+                    name: newTask[section].name,
+                    section: section,
+                    difficulty: newTask[section].difficulty,
+                    status: newTask[section].status
+                });
+
+                if (response.success) {
+                    const taskWithDate = {
+                        id: response.problem.id,
+                        name: newTask[section].name,
+                        difficulty: newTask[section].difficulty,
+                        status: newTask[section].status,
+                        dateAdded: response.problem.dateAdded,
+                        notes: ""
+                    };
+                    
+                    const updatedTasks = {
+                        ...tasks,
+                        [section]: [...(tasks[section] || []), taskWithDate],
+                    };
+                    updateTasks(updatedTasks);
+                    
+                    setNewTask({
+                        ...newTask,
+                        [section]: { name: "", difficulty: "Easy", status: "Attempted" },
+                    });
+                    setShowForm({ ...showForm, [section]: false });
+                }
+            } catch (error) {
+                console.error('Failed to save problem:', error);
+                alert('Failed to save problem. Please try again.');
+            }
         }
     }
 
-    function deleteTask(section, index) {
-        const updatedTasksForSection = tasks[section].filter((_, i) => i !== index);
-        const updatedTasks = { ...tasks, [section]: updatedTasksForSection };
-        updateTasks(updatedTasks);
+    async function deleteTask(section, index) {
+        const task = tasks[section][index];
         
-        if (editingTask && editingTask.section === section && editingTask.index === index) {
-            cancelEditing();
-        }
-        else if (editingTask && editingTask.section === section && editingTask.index > index) {
-            setEditingTask({ ...editingTask, index: editingTask.index - 1 });
+        try {
+            await ApiService.deleteProblem(task.id);
+            
+            const updatedTasksForSection = (tasks[section] || []).filter((_, i) => i !== index);
+            const updatedTasks = { ...tasks, [section]: updatedTasksForSection };
+            updateTasks(updatedTasks);
+            
+            if (editingTask && editingTask.section === section && editingTask.index === index) {
+                cancelEditing();
+            }
+            else if (editingTask && editingTask.section === section && editingTask.index > index) {
+                setEditingTask({ ...editingTask, index: editingTask.index - 1 });
+            }
+        } catch (error) {
+            console.error('Failed to delete problem:', error);
+            alert('Failed to delete problem. Please try again.');
         }
     }
 
@@ -181,7 +228,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
         }
     }
 
-    // Priority Queue Functions
     const calculateReviewDate = (dateAdded, status) => {
         const addedDate = new Date(dateAdded);
         const reviewDays = status === "Solved" ? 5 : 3;
@@ -194,7 +240,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
         const allProblems = [];
         
         Object.keys(tasks).forEach(section => {
-            tasks[section].forEach((task, index) => {
+            (tasks[section] || []).forEach((task, index) => {
                 const reviewDate = calculateReviewDate(task.dateAdded, task.status);
                 allProblems.push({
                     ...task,
@@ -243,7 +289,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
 
     return (
         <div>
-            {/* Header with user info and logout - Full Width */}
             <div style={{
                 display: "flex",
                 justifyContent: "space-between",
@@ -278,19 +323,15 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                 </button>
             </div>
 
-            {/* Main Content Area */}
             <div style={{
                 display: "flex",
                 gap: "2rem",
                 padding: "0 2rem",
                 minHeight: "100vh"
             }}>
-                {/* Left side - Main content */}
                 <div style={{ flex: 1 }}>
-                    {/* Sections */}
                     {sections.map((section) => (
                     <div key={section} style={{ marginBottom: "2rem" }}>
-                        {/* Section Header */}
                         <div
                             style={{
                                 display: "flex",
@@ -339,10 +380,8 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                             </button>
                         </div>
 
-                        {/* Collapsible Content */}
                         {!collapsed[section] && (
                             <div>
-                                {/* Add Task Form */}
                                 {showForm[section] && (
                                     <div
                                         style={{
@@ -412,8 +451,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                     </div>
                                 )}
 
-                                {/* Column Headers */}
-                                {tasks[section].length > 0 && (
+                                {(tasks[section] || []).length > 0 && (
                                     <div
                                         style={{
                                             display: "grid",
@@ -438,7 +476,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                     </div>
                                 )}
 
-                                {/* Task List */}
                                 <ul
                                     style={{
                                         listStyleType: "none",
@@ -447,7 +484,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         width: "520px",
                                     }}
                                 >
-                                    {tasks[section].map((task, index) => {
+                                    {(tasks[section] || []).map((task, index) => {
                                         const isEditing = editingTask && editingTask.section === section && editingTask.index === index;
                                         
                                         return (
@@ -626,7 +663,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                 ))}
             </div>
 
-                {/* Right side - Priority Queue */}
                 <div style={{
                     position: "sticky",
                     top: "2rem",
@@ -642,7 +678,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                     display: "flex",
                     flexDirection: "column"
                 }}>
-                    {/* Header */}
                     <div style={{
                         backgroundColor: "#F99D07",
                         color: "#FDFDFD",
@@ -656,7 +691,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                         </p>
                     </div>
 
-                    {/* Caught Up Message */}
                     {todayProblems.length === 0 && priorityProblems.length > 0 && (
                         <div style={{
                             padding: "1rem",
@@ -683,7 +717,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                         </div>
                     )}
 
-                    {/* Problems List */}
                     <div style={{
                         flex: 1,
                         overflowY: "auto",
@@ -726,7 +759,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         e.target.style.transform = "translateX(0)";
                                     }}
                                 >
-                                    {/* Priority number */}
                                     <div style={{
                                         position: "absolute",
                                         top: "0.5rem",
@@ -745,7 +777,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         {index + 1}
                                     </div>
 
-                                    {/* Problem name */}
                                     <div style={{
                                         color: "#333333",
                                         fontWeight: "bold",
@@ -760,7 +791,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         {problem.name}
                                     </div>
 
-                                    {/* Section */}
                                     <div style={{
                                         color: "#666666",
                                         fontSize: "0.75rem",
@@ -769,7 +799,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         {problem.section}
                                     </div>
 
-                                    {/* Status and Difficulty */}
                                     <div style={{
                                         display: "flex",
                                         justifyContent: "space-between",
@@ -791,7 +820,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         </span>
                                     </div>
 
-                                    {/* Review date and quick action */}
                                     <div style={{
                                         display: "flex",
                                         justifyContent: "space-between",

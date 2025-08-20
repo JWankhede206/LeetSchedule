@@ -7,30 +7,44 @@ function Login({ onLogin, onSignup }) {
     const [firstName, setFirstName] = useState("");
     const [lastName, setLastName] = useState("");
     const [error, setError] = useState("");
+    const [isLoading, setIsLoading] = useState(false);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError("");
+        setIsLoading(true);
 
         if (!email || !password) {
             setError("Please fill in all fields");
+            setIsLoading(false);
             return;
         }
 
         if (isSignup && (!firstName || !lastName)) {
             setError("Please fill in all fields");
+            setIsLoading(false);
             return;
         }
 
         if (password.length < 6) {
             setError("Password must be at least 6 characters");
+            setIsLoading(false);
             return;
         }
 
-        const result = isSignup ? onSignup(email, password, firstName, lastName) : onLogin(email, password);
-        
-        if (!result.success) {
-            setError(result.message);
+        try {
+            const result = isSignup 
+                ? await onSignup(email, password, firstName, lastName) 
+                : await onLogin(email, password);
+            
+            if (!result.success) {
+                setError(result.message || "An error occurred");
+            }
+        } catch (error) {
+            setError("An unexpected error occurred");
+            console.error("Login/Signup error:", error);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -94,6 +108,7 @@ function Login({ onLogin, onSignup }) {
                                         boxSizing: "border-box"
                                     }}
                                     placeholder="Enter your first name"
+                                    disabled={isLoading}
                                 />
                             </div>
 
@@ -120,6 +135,7 @@ function Login({ onLogin, onSignup }) {
                                         boxSizing: "border-box"
                                     }}
                                     placeholder="Enter your last name"
+                                    disabled={isLoading}
                                 />
                             </div>
                         </>
@@ -148,6 +164,7 @@ function Login({ onLogin, onSignup }) {
                                 boxSizing: "border-box"
                             }}
                             placeholder="Enter your email"
+                            disabled={isLoading}
                         />
                     </div>
 
@@ -174,6 +191,7 @@ function Login({ onLogin, onSignup }) {
                                 boxSizing: "border-box"
                             }}
                             placeholder="Enter your password"
+                            disabled={isLoading}
                         />
                     </div>
 
@@ -190,20 +208,21 @@ function Login({ onLogin, onSignup }) {
 
                     <button
                         type="submit"
+                        disabled={isLoading}
                         style={{
                             width: "100%",
                             padding: "0.8rem",
-                            backgroundColor: "#F99D07",
+                            backgroundColor: isLoading ? "#ccc" : "#F99D07",
                             color: "white",
                             border: "none",
                             borderRadius: "5px",
                             fontSize: "1.1rem",
                             fontWeight: "bold",
-                            cursor: "pointer",
+                            cursor: isLoading ? "not-allowed" : "pointer",
                             marginBottom: "1rem"
                         }}
                     >
-                        {isSignup ? "Sign Up" : "Login"}
+                        {isLoading ? "Please wait..." : (isSignup ? "Sign Up" : "Login")}
                     </button>
                 </form>
 
@@ -213,12 +232,13 @@ function Login({ onLogin, onSignup }) {
                     </p>
                     <button
                         onClick={toggleMode}
+                        disabled={isLoading}
                         style={{
                             background: "none",
                             border: "none",
-                            color: "#F99D07",
+                            color: isLoading ? "#ccc" : "#F99D07",
                             textDecoration: "underline",
-                            cursor: "pointer",
+                            cursor: isLoading ? "not-allowed" : "pointer",
                             fontSize: "1rem"
                         }}
                     >

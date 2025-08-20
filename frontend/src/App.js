@@ -1,14 +1,31 @@
 import React, { useState, useEffect } from "react";
 import ToDoList from "./ToDoList";
 import Login from "./Login";
+import ApiService from "./api";
 
 function ProblemDetails({ problem, onBack, onNotesUpdate }) {
     const [notes, setNotes] = useState(problem.notes || "");
+    const [isSaving, setIsSaving] = useState(false);
 
-    const handleNotesChange = (e) => {
+    const handleNotesChange = async (e) => {
         const newNotes = e.target.value;
         setNotes(newNotes);
-        onNotesUpdate(newNotes);
+        
+        // Auto-save notes after user stops typing
+        setIsSaving(true);
+        try {
+            await ApiService.updateProblem(problem.id, {
+                name: problem.name,
+                difficulty: problem.difficulty,
+                status: problem.status,
+                notes: newNotes
+            });
+            onNotesUpdate(newNotes);
+        } catch (error) {
+            console.error('Failed to save notes:', error);
+        } finally {
+            setIsSaving(false);
+        }
     };
 
     const formatDate = (dateString) => {
@@ -72,7 +89,14 @@ function ProblemDetails({ problem, onBack, onNotesUpdate }) {
 
             {/* Notes Section */}
             <div>
-                <h2 style={{ color: "#FDFDFD", marginBottom: "1rem" }}>Notes</h2>
+                <div style={{ display: "flex", alignItems: "center", marginBottom: "1rem" }}>
+                    <h2 style={{ color: "#FDFDFD", margin: 0, marginRight: "1rem" }}>Notes</h2>
+                    {isSaving && (
+                        <span style={{ color: "#F99D07", fontSize: "0.9rem" }}>
+                            Saving...
+                        </span>
+                    )}
+                </div>
                 <textarea
                     value={notes}
                     onChange={handleNotesChange}
@@ -102,114 +126,110 @@ function App() {
     const [isLoading, setIsLoading] = useState(true);
     const [currentView, setCurrentView] = useState("list");
     const [selectedProblem, setSelectedProblem] = useState(null);
+    const [tasks, setTasks] = useState({});
 
     // Check if user is already logged in when app loads
     useEffect(() => {
-        const savedUser = localStorage.getItem('currentUser');
-        if (savedUser) {
-            const user = JSON.parse(savedUser);
-            // Ensure all tasks have status field for backwards compatibility
-            if (user.tasks) {
-                Object.keys(user.tasks).forEach(section => {
-                    user.tasks[section] = user.tasks[section].map(task => ({
-                        ...task,
-                        status: task.status || "Attempted" // Default to Attempted if not set
-                    }));
-                });
-            }
-            setCurrentUser(user);
+        const token = localStorage.getItem('token');
+        if (token) {
+            // Verify token and load user data
+            loadUserData();
+        } else {
+            setIsLoading(false);
         }
-        setIsLoading(false);
     }, []);
 
-    const handleLogin = (email, password) => {
-        // Get existing users from localStorage
-        const users = JSON.parse(localStorage.getItem('users') || '{}');
-        
-        // Check if user exists and password matches
-        if (users[email] && users[email].password === password) {
+    const loadUserData = async () => {
+        try {
+            const response = await ApiService.getProblems();
+            setTasks(response.tasks);
+            
+            // Set a basic user object (you might want to store user info separately)
             const user = { 
-                email, 
-                firstName: users[email].firstName,
-                lastName: users[email].lastName,
-                tasks: users[email].tasks || {} 
+                email: 'current-user@example.com', // You'll need to get this from token or separate API call
+                firstName: 'User', 
+                lastName: 'Name',
+                tasks: response.tasks 
             };
-            
-            // Ensure all tasks have status field for backwards compatibility
-            if (user.tasks) {
-                Object.keys(user.tasks).forEach(section => {
-                    user.tasks[section] = user.tasks[section].map(task => ({
-                        ...task,
-                        status: task.status || "Attempted" // Default to Attempted if not set
-                    }));
-                });
-            }
-            
             setCurrentUser(user);
-            localStorage.setItem('currentUser', JSON.stringify(user));
-            return { success: true };
-        } else {
-            return { success: false, message: "Invalid email or password" };
+        } catch (error) {
+            console.error('Failed to load user data:', error);
+            // Token might be invalid, clear it
+            ApiService.removeToken();
+        } finally {
+            setIsLoading(false);
         }
     };
 
-    const handleSignup = (email, password, firstName, lastName) => {
-        // Get existing users from localStorage
-        const users = JSON.parse(localStorage.getItem('users') || '{}');
-        
-        // Check if user already exists
-        if (users[email]) {
-            return { success: false, message: "User already exists" };
+    const handleLogin = async (email, password) => {
+        try {
+            const response = await ApiService.login(email, password);
+            if (response.success) {
+                const user = {
+                    email: response.user.email,
+                    firstName: response.user.firstName,
+                    lastName: response.user.lastName,
+                    tasks: {}
+                };
+                setCurrentUser(user);
+                
+                // Load user's problems
+                await loadUserData();
+                
+                return { success: true };
+            }
+        } catch (error) {
+            return { success: false, message: error.message };
         }
-        
-        // Create new user
-        const sections = [
-            "Arrays", "Two Pointers", "Stack", "Binary Search", 
-            "Sliding Window", "Linked List", "Trees", "Back Tracking", "DP"
-        ];
-        
-        const emptyTasks = sections.reduce((acc, section) => {
-            acc[section] = [];
-            return acc;
-        }, {});
-        
-        users[email] = { 
-            password,
-            firstName,
-            lastName,
-            tasks: emptyTasks 
-        };
-        
-        localStorage.setItem('users', JSON.stringify(users));
-        
-        const user = { email, firstName, lastName, tasks: emptyTasks };
-        setCurrentUser(user);
-        localStorage.setItem('currentUser', JSON.stringify(user));
-        
-        return { success: true };
+    };
+
+    const handleSignup = async (email, password, firstName, lastName) => {
+        try {
+            const response = await ApiService.signup(email, password, firstName, lastName);
+            if (response.success) {
+                const user = {
+                    email: response.user.email,
+                    firstName: response.user.firstName,
+                    lastName: response.user.lastName,
+                    tasks: {}
+                };
+                setCurrentUser(user);
+                
+                // Initialize empty tasks structure
+                const sections = [
+                    "Arrays", "Two Pointers", "Stack", "Binary Search", 
+                    "Sliding Window", "Linked List", "Trees", "Back Tracking", "DP"
+                ];
+                const emptyTasks = sections.reduce((acc, section) => {
+                    acc[section] = [];
+                    return acc;
+                }, {});
+                setTasks(emptyTasks);
+                
+                return { success: true };
+            }
+        } catch (error) {
+            return { success: false, message: error.message };
+        }
     };
 
     const handleLogout = () => {
+        ApiService.logout();
         setCurrentUser(null);
-        localStorage.removeItem('currentUser');
+        setTasks({});
+        setCurrentView("list");
+        setSelectedProblem(null);
     };
 
     const updateUserTasks = (newTasks) => {
+        setTasks(newTasks);
         // Update current user state
         const updatedUser = { ...currentUser, tasks: newTasks };
         setCurrentUser(updatedUser);
-        localStorage.setItem('currentUser', JSON.stringify(updatedUser));
-        
-        // Update in users database
-        const users = JSON.parse(localStorage.getItem('users') || '{}');
-        if (users[currentUser.email]) {
-            users[currentUser.email].tasks = newTasks;
-            localStorage.setItem('users', JSON.stringify(users));
-        }
     };
 
     const navigateToProblem = (problemName, section, problemIndex) => {
-        const problem = currentUser.tasks[section][problemIndex];
+        const problem = tasks[section][problemIndex];
         setSelectedProblem({ 
             ...problem, 
             section, 
@@ -227,7 +247,7 @@ function App() {
         if (!selectedProblem) return;
         
         const { section, index } = selectedProblem;
-        const updatedTasks = { ...currentUser.tasks };
+        const updatedTasks = { ...tasks };
         updatedTasks[section][index] = {
             ...updatedTasks[section][index],
             notes: notes
@@ -237,17 +257,38 @@ function App() {
         setSelectedProblem({ ...selectedProblem, notes });
     };
 
-    const updateProblemStatus = (section, index, newStatus) => {
-        const updatedTasks = { ...currentUser.tasks };
-        updatedTasks[section][index] = {
-            ...updatedTasks[section][index],
-            status: newStatus
-        };
-        updateUserTasks(updatedTasks);
+    const updateProblemStatus = async (section, index, newStatus) => {
+        try {
+            const problem = tasks[section][index];
+            await ApiService.updateProblem(problem.id, {
+                name: problem.name,
+                difficulty: problem.difficulty,
+                status: newStatus,
+                notes: problem.notes
+            });
+
+            const updatedTasks = { ...tasks };
+            updatedTasks[section][index] = {
+                ...updatedTasks[section][index],
+                status: newStatus
+            };
+            updateUserTasks(updatedTasks);
+        } catch (error) {
+            console.error('Failed to update problem status:', error);
+        }
     };
 
     if (isLoading) {
-        return <div style={{ textAlign: 'center', marginTop: '2rem' }}>Loading...</div>;
+        return (
+            <div style={{ 
+                textAlign: 'center', 
+                marginTop: '2rem',
+                color: '#333',
+                fontSize: '1.2rem'
+            }}>
+                Loading...
+            </div>
+        );
     }
 
     return (
@@ -255,7 +296,7 @@ function App() {
             {currentUser ? (
                 currentView === "list" ? (
                     <ToDoList 
-                        user={currentUser}
+                        user={{ ...currentUser, tasks }}
                         onTasksUpdate={updateUserTasks}
                         onLogout={handleLogout}
                         onProblemClick={navigateToProblem}
