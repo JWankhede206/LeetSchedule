@@ -311,3 +311,264 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
 });
+
+
+app.get('/api/analytics/:days', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    const days = parseInt(req.params.days) || 30;
+    const startDate = new Date();
+    startDate.setDate(startDate.getDate() - days);
+    
+    const analytics = {};
+    
+    // Get total problems count
+    db.query(
+        'SELECT COUNT(*) as total FROM problems WHERE user_id = ?',
+        [userId],
+        (err, totalResult) => {
+            if (err) {
+                return res.status(500).json({ error: 'Failed to get total problems' });
+            }
+            
+            analytics.totalProblems = totalResult[0].total;
+            
+            // Get solved problems count
+            db.query(
+                'SELECT COUNT(*) as solved FROM problems WHERE user_id = ? AND status = "Solved"',
+                [userId],
+                (err, solvedResult) => {
+                    if (err) {
+                        return res.status(500).json({ error: 'Failed to get solved problems' });
+                    }
+                    
+                    analytics.solvedProblems = solvedResult[0].solved;
+                    analytics.solveRate = analytics.totalProblems > 0 
+                        ? ((analytics.solvedProblems / analytics.totalProblems) * 100).toFixed(1)
+                        : 0;
+                    
+                    // Get difficulty distribution
+                    db.query(
+                        'SELECT difficulty, COUNT(*) as count FROM problems WHERE user_id = ? GROUP BY difficulty',
+                        [userId],
+                        (err, difficultyResult) => {
+                            if (err) {
+                                return res.status(500).json({ error: 'Failed to get difficulty distribution' });
+                            }
+                            
+                            analytics.difficultyDistribution = difficultyResult.map(row => ({
+                                label: row.difficulty,
+                                value: row.count
+                            }));
+                            
+                            // Get section progress
+                            db.query(
+                                'SELECT section, COUNT(*) as count FROM problems WHERE user_id = ? GROUP BY section ORDER BY count DESC',
+                                [userId],
+                                (err, sectionResult) => {
+                                    if (err) {
+                                        return res.status(500).json({ error: 'Failed to get section progress' });
+                                    }
+                                    
+                                    analytics.sectionProgress = sectionResult.map(row => ({
+                                        label: row.section.substring(0, 8),
+                                        value: row.count
+                                    }));
+                                    
+                                    // Get daily progress for the time range
+                                    db.query(
+                                        `SELECT DATE(date_added) as date, COUNT(*) as count 
+                                         FROM problems 
+                                         WHERE user_id = ? AND date_added >= ? 
+                                         GROUP BY DATE(date_added) 
+                                         ORDER BY date`,
+                                        [userId, startDate],
+                                        (err, dailyResult) => {
+                                            if (err) {
+                                                return res.status(500).json({ error: 'Failed to get daily progress' });
+                                            }
+                                            
+                                            // Fill in missing days with 0
+                                            const dailyMap = {};
+                                            dailyResult.forEach(row => {
+                                                dailyMap[row.date] = row.count;
+                                            });
+                                            
+                                            analytics.dailyProgress = [];
+                                            for (let i = days - 1; i >= 0; i--) {
+                                                const date = new Date();
+                                                date.setDate(date.getDate() - i);
+                                                const dateStr = date.toISOString().split('T')[0];
+                                                analytics.dailyProgress.push({
+                                                    label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+                                                    value: dailyMap[dateStr] || 0
+                                                });
+                                            }
+                                            
+                                            // Calculate streak
+                                            db.query(
+                                                `SELECT DATE(date_added) as date 
+                                                 FROM problems 
+                                                 WHERE user_id = ? 
+                                                 ORDER BY date_added DESC`,
+                                                [userId],
+                                                (err, streakResult) => {
+                                                    if (err) {
+                                                        return res.status(500).json({ error: 'Failed to calculate streak' });
+                                                    }
+                                                    
+                                                    // Calculate current and longest streak
+                                                    let currentStreak = 0;
+                                                    let longestStreak = 0;
+                                                    let tempStreak = 0;
+                                                    let lastDate = null;
+                                                    
+                                                    const uniqueDates = [...new Set(streakResult.map(row => row.date))];
+                                                    
+                                                    for (let i = 0; i < uniqueDates.length; i++) {
+                                                        const currentDate = new Date(uniqueDates[i]);
+                                                        
+                                                        if (i === 0) {
+                                                            // Check if today or yesterday
+                                                            const today = new Date();
+                                                            const yesterday = new Date();
+                                                            yesterday.setDate(yesterday.getDate() - 1);
+                                                            
+                                                            if (currentDate.toDateString() === today.toDateString() ||
+                                                                currentDate.toDateString() === yesterday.toDateString()) {
+                                                                currentStreak = 1;
+                                                                tempStreak = 1;
+                                                            }
+                                                        } else {
+                                                            const prevDate = new Date(uniqueDates[i - 1]);
+                                                            const dayDiff = (prevDate - currentDate) / (1000 * 60 * 60 * 24);
+                                                            
+                                                            if (dayDiff === 1) {
+                                                                tempStreak++;
+                                                                if (i === 1) currentStreak = tempStreak;
+                                                            } else {
+                                                                if (i === 1) currentStreak = 0;
+                                                                longestStreak = Math.max(longestStreak, tempStreak);
+                                                                tempStreak = 1;
+                                                            }
+                                                        }
+                                                        
+                                                        lastDate = currentDate;
+                                                    }
+                                                    
+                                                    longestStreak = Math.max(longestStreak, tempStreak, currentStreak);
+                                                    
+                                                    analytics.currentStreak = currentStreak;
+                                                    analytics.longestStreak = longestStreak;
+                                                    
+                                                    // Get review queue info
+                                                    const today = new Date();
+                                                    const reviewPromises = [];
+                                                    
+                                                    db.query(
+                                                        'SELECT attempted_review_days, solved_review_days FROM users WHERE id = ?',
+                                                        [userId],
+                                                        (err, userSettings) => {
+                                                            if (err) {
+                                                                return res.status(500).json({ error: 'Failed to get user settings' });
+                                                            }
+                                                            
+                                                            const attemptedDays = userSettings[0]?.attempted_review_days || 3;
+                                                            const solvedDays = userSettings[0]?.solved_review_days || 5;
+                                                            
+                                                            db.query(
+                                                                `SELECT *, 
+                                                                 CASE 
+                                                                   WHEN status = 'Solved' THEN DATE_ADD(date_added, INTERVAL ${solvedDays} DAY)
+                                                                   ELSE DATE_ADD(date_added, INTERVAL ${attemptedDays} DAY)
+                                                                 END as review_date
+                                                                 FROM problems 
+                                                                 WHERE user_id = ?`,
+                                                                [userId],
+                                                                (err, reviewResult) => {
+                                                                    if (err) {
+                                                                        return res.status(500).json({ error: 'Failed to get review queue' });
+                                                                    }
+                                                                    
+                                                                    let totalDue = 0;
+                                                                    let overdue = 0;
+                                                                    let totalReviewDays = 0;
+                                                                    
+                                                                    reviewResult.forEach(problem => {
+                                                                        const reviewDate = new Date(problem.review_date);
+                                                                        const daysDiff = (reviewDate - today) / (1000 * 60 * 60 * 24);
+                                                                        
+                                                                        if (daysDiff <= 0) {
+                                                                            totalDue++;
+                                                                            if (daysDiff < 0) overdue++;
+                                                                        }
+                                                                        
+                                                                        totalReviewDays += Math.max(0, daysDiff);
+                                                                    });
+                                                                    
+                                                                    analytics.reviewQueue = {
+                                                                        total: totalDue,
+                                                                        overdue: overdue
+                                                                    };
+                                                                    
+                                                                    analytics.avgReviewDays = reviewResult.length > 0 
+                                                                        ? (totalReviewDays / reviewResult.length).toFixed(1)
+                                                                        : 0;
+                                                                    
+                                                                    // Get recent activity
+                                                                    db.query(
+                                                                        'SELECT name, section, status, date_added as date FROM problems WHERE user_id = ? ORDER BY date_added DESC LIMIT 10',
+                                                                        [userId],
+                                                                        (err, activityResult) => {
+                                                                            if (err) {
+                                                                                return res.status(500).json({ error: 'Failed to get recent activity' });
+                                                                            }
+                                                                            
+                                                                            analytics.recentActivity = activityResult;
+                                                                            
+                                                                            // Generate weekly heatmap (last 12 weeks)
+                                                                            const heatmapData = [];
+                                                                            const heatmapDates = {};
+                                                                            
+                                                                            // Group problems by date
+                                                                            dailyResult.forEach(row => {
+                                                                                heatmapDates[row.date] = row.count;
+                                                                            });
+                                                                            
+                                                                            // Generate 12 weeks of data
+                                                                            for (let week = 0; week < 12; week++) {
+                                                                                const weekData = [];
+                                                                                for (let day = 0; day < 7; day++) {
+                                                                                    const date = new Date();
+                                                                                    date.setDate(date.getDate() - (week * 7 + day));
+                                                                                    const dateStr = date.toISOString().split('T')[0];
+                                                                                    
+                                                                                    weekData.push({
+                                                                                        date: dateStr,
+                                                                                        count: heatmapDates[dateStr] || 0
+                                                                                    });
+                                                                                }
+                                                                                heatmapData.unshift(weekData);
+                                                                            }
+                                                                            
+                                                                            analytics.weeklyHeatmap = heatmapData;
+                                                                            
+                                                                            res.json(analytics);
+                                                                        }
+                                                                    );
+                                                                }
+                                                            );
+                                                        }
+                                                    );
+                                                }
+                                            );
+                                        }
+                                    );
+                                }
+                            );
+                        }
+                    );
+                }
+            );
+        }
+    );
+});

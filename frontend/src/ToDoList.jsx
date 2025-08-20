@@ -1,7 +1,8 @@
 import React, { useState } from "react";
 import ApiService from "./api";
 
-function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdate, onSettingsClick }) {
+function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdate, onSettingsClick, onAnalyticsClick }) {
+
     const sections = [
         "Arrays",
         "Two Pointers",
@@ -311,6 +312,20 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                 </div>
                 <div style={{ display: "flex", gap: "1rem" }}>
                     <button
+                        onClick={onAnalyticsClick}
+                        style={{
+                            backgroundColor: "#FDFDFD",
+                            color: "#F99D07",
+                            border: "1px solid #F99D07",
+                            padding: "0.5rem 1rem",
+                            borderRadius: "5px",
+                            cursor: "pointer",
+                            fontWeight: "bold"
+                        }}
+                    >
+                        📊 Analytics
+                    </button>
+                    <button
                         onClick={onSettingsClick}
                         style={{
                             backgroundColor: "#FDFDFD",
@@ -340,7 +355,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                     </button>
                 </div>
             </div>
-
+    
             <div style={{
                 display: "flex",
                 gap: "2rem",
@@ -397,7 +412,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                 Add
                             </button>
                         </div>
-
+    
                         {!collapsed[section] && (
                             <div>
                                 {showForm[section] && (
@@ -468,7 +483,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         </button>
                                     </div>
                                 )}
-
+    
                                 {(tasks[section] || []).length > 0 && (
                                     <div
                                         style={{
@@ -493,7 +508,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                         <div style={{ textAlign: "right" }}>Delete</div>
                                     </div>
                                 )}
-
+    
                                 <ul
                                     style={{
                                         listStyleType: "none",
@@ -680,7 +695,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                     </div>
                 ))}
             </div>
-
+    
                 <div style={{
                     position: "sticky",
                     top: "2rem",
@@ -708,7 +723,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                             {priorityProblems.filter(p => p.isOverdue).length} overdue • {priorityProblems.length} total
                         </p>
                     </div>
-
+    
                     {todayProblems.length === 0 && priorityProblems.length > 0 && (
                         <div style={{
                             padding: "1rem",
@@ -734,7 +749,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                             </div>
                         </div>
                     )}
-
+    
                     <div style={{
                         flex: 1,
                         overflowY: "auto",
@@ -794,7 +809,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                     }}>
                                         {index + 1}
                                     </div>
-
+    
                                     <div style={{
                                         color: "#333333",
                                         fontWeight: "bold",
@@ -808,7 +823,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                     }}>
                                         {problem.name}
                                     </div>
-
+    
                                     <div style={{
                                         color: "#666666",
                                         fontSize: "0.75rem",
@@ -816,7 +831,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                     }}>
                                         {problem.section}
                                     </div>
-
+    
                                     <div style={{
                                         display: "flex",
                                         justifyContent: "space-between",
@@ -837,7 +852,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                                             {problem.difficulty}
                                         </span>
                                     </div>
-
+    
                                     <div style={{
                                         display: "flex",
                                         justifyContent: "space-between",
@@ -893,5 +908,4 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
         </div>
     );
 }
-
 export default ToDoList;
