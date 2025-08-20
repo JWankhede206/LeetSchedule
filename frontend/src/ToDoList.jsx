@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import ApiService from "./api";
 
-function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdate }) {
+function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdate, onSettingsClick }) {
     const sections = [
         "Arrays",
         "Two Pointers",
@@ -207,7 +207,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
     function getDifficultyStyle(difficulty) {
         switch (difficulty) {
             case "Easy":
-                return { color: "green", fontWeight: "bold" };
+                return { color: "#4CAF50", fontWeight: "bold" };
             case "Medium":
                 return { color: "orange", fontWeight: "bold" };
             case "Hard":
@@ -230,7 +230,9 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
 
     const calculateReviewDate = (dateAdded, status) => {
         const addedDate = new Date(dateAdded);
-        const reviewDays = status === "Solved" ? 5 : 3;
+        const reviewDays = status === "Solved" 
+            ? (user.userSettings?.solvedReviewDays || user.solvedReviewDays || 5)
+            : (user.userSettings?.attemptedReviewDays || user.attemptedReviewDays || 3);
         const reviewDate = new Date(addedDate);
         reviewDate.setDate(addedDate.getDate() + reviewDays);
         return reviewDate;
@@ -275,7 +277,7 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
 
     const getQueueDifficultyColor = (difficulty) => {
         switch (difficulty) {
-            case "Easy": return "green";
+            case "Easy": return "#4CAF50";
             case "Medium": return "orange";
             case "Hard": return "red";
             default: return "#333333";
@@ -307,20 +309,36 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                         Welcome back, {user.firstName}
                     </p>
                 </div>
-                <button
-                    onClick={onLogout}
-                    style={{
-                        backgroundColor: "#FDFDFD",
-                        color: "#F99D07",
-                        border: "1px solid #F99D07",
-                        padding: "0.5rem 1rem",
-                        borderRadius: "5px",
-                        cursor: "pointer",
-                        fontWeight: "bold"
-                    }}
-                >
-                    Logout
-                </button>
+                <div style={{ display: "flex", gap: "1rem" }}>
+                    <button
+                        onClick={onSettingsClick}
+                        style={{
+                            backgroundColor: "#FDFDFD",
+                            color: "#F99D07",
+                            border: "1px solid #F99D07",
+                            padding: "0.5rem 1rem",
+                            borderRadius: "5px",
+                            cursor: "pointer",
+                            fontWeight: "bold"
+                        }}
+                    >
+                        ⚙️ Settings
+                    </button>
+                    <button
+                        onClick={onLogout}
+                        style={{
+                            backgroundColor: "#FDFDFD",
+                            color: "#F99D07",
+                            border: "1px solid #F99D07",
+                            padding: "0.5rem 1rem",
+                            borderRadius: "5px",
+                            cursor: "pointer",
+                            fontWeight: "bold"
+                        }}
+                    >
+                        Logout
+                    </button>
+                </div>
             </div>
 
             <div style={{

@@ -7,10 +7,8 @@ require('dotenv').config();
 
 const app = express();
 
-
 app.use(cors());
 app.use(express.json());
-
 
 const db = mysql.createConnection({
     host: process.env.DB_HOST,
@@ -26,7 +24,6 @@ db.connect((err) => {
     }
     console.log('Connected to MySQL database');
 });
-
 
 const authenticateToken = (req, res, next) => {
     const authHeader = req.headers['authorization'];
@@ -45,24 +42,12 @@ const authenticateToken = (req, res, next) => {
     });
 };
 
-
-app.get('/', (req, res) => {
-    res.send('LeetCode Tracker API Server');
-});
-
-
 app.post('/api/signup', async (req, res) => {
     try {
         const { email, password, firstName, lastName } = req.body;
         
-        if (!email || !password || !firstName || !lastName) {
-            return res.status(400).json({ error: 'All fields are required' });
-        }
-        
-
         db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
             if (err) {
-                console.error('Database error:', err);
                 return res.status(500).json({ error: 'Database error' });
             }
             
@@ -70,16 +55,13 @@ app.post('/api/signup', async (req, res) => {
                 return res.status(400).json({ error: 'User already exists' });
             }
             
-
             const hashedPassword = await bcrypt.hash(password, 10);
             
-
             db.query(
                 'INSERT INTO users (email, password, first_name, last_name) VALUES (?, ?, ?, ?)',
                 [email, hashedPassword, firstName, lastName],
                 (err, result) => {
                     if (err) {
-                        console.error('Error creating user:', err);
                         return res.status(500).json({ error: 'Failed to create user' });
                     }
                     
@@ -95,7 +77,6 @@ app.post('/api/signup', async (req, res) => {
             );
         });
     } catch (error) {
-        console.error('Server error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
@@ -104,13 +85,8 @@ app.post('/api/login', (req, res) => {
     try {
         const { email, password } = req.body;
         
-        if (!email || !password) {
-            return res.status(400).json({ error: 'Email and password are required' });
-        }
-        
         db.query('SELECT * FROM users WHERE email = ?', [email], async (err, results) => {
             if (err) {
-                console.error('Database error:', err);
                 return res.status(500).json({ error: 'Database error' });
             }
             
@@ -139,11 +115,9 @@ app.post('/api/login', (req, res) => {
             });
         });
     } catch (error) {
-        console.error('Server error:', error);
         res.status(500).json({ error: 'Server error' });
     }
 });
-
 
 app.get('/api/problems', authenticateToken, (req, res) => {
     const userId = req.user.userId;
@@ -153,11 +127,9 @@ app.get('/api/problems', authenticateToken, (req, res) => {
         [userId],
         (err, results) => {
             if (err) {
-                console.error('Database error:', err);
                 return res.status(500).json({ error: 'Failed to fetch problems' });
             }
-
-
+            
             const sections = [
                 "Arrays", "Two Pointers", "Stack", "Binary Search", 
                 "Sliding Window", "Linked List", "Trees", "Back Tracking", "DP"
@@ -185,16 +157,11 @@ app.post('/api/problems', authenticateToken, (req, res) => {
     const userId = req.user.userId;
     const { name, section, difficulty, status } = req.body;
     
-    if (!name || !section || !difficulty || !status) {
-        return res.status(400).json({ error: 'All fields are required' });
-    }
-    
     db.query(
         'INSERT INTO problems (user_id, name, section, difficulty, status) VALUES (?, ?, ?, ?, ?)',
         [userId, name, section, difficulty, status],
         (err, result) => {
             if (err) {
-                console.error('Database error:', err);
                 return res.status(500).json({ error: 'Failed to create problem' });
             }
             
@@ -224,7 +191,6 @@ app.put('/api/problems/:id', authenticateToken, (req, res) => {
         [name, difficulty, status, notes, problemId, userId],
         (err, result) => {
             if (err) {
-                console.error('Database error:', err);
                 return res.status(500).json({ error: 'Failed to update problem' });
             }
             
@@ -246,7 +212,6 @@ app.delete('/api/problems/:id', authenticateToken, (req, res) => {
         [problemId, userId],
         (err, result) => {
             if (err) {
-                console.error('Database error:', err);
                 return res.status(500).json({ error: 'Failed to delete problem' });
             }
             
@@ -257,6 +222,89 @@ app.delete('/api/problems/:id', authenticateToken, (req, res) => {
             res.json({ success: true });
         }
     );
+});
+
+app.get('/api/user/settings', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    
+    db.query(
+        'SELECT * FROM users WHERE id = ?',
+        [userId],
+        (err, results) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            
+            if (results.length === 0) {
+                return res.status(404).json({ error: 'User not found' });
+            }
+            
+            const user = results[0];
+            res.json({
+                success: true,
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    firstName: user.first_name,
+                    lastName: user.last_name
+                },
+                settings: {
+                    attemptedReviewDays: user.attempted_review_days || 3,
+                    solvedReviewDays: user.solved_review_days || 5
+                }
+            });
+        }
+    );
+});
+
+app.put('/api/user/settings', authenticateToken, (req, res) => {
+    const userId = req.user.userId;
+    const { email, firstName, lastName, attemptedReviewDays, solvedReviewDays } = req.body;
+    
+    if (!email || !firstName || !lastName) {
+        return res.status(400).json({ error: 'Email, first name, and last name are required' });
+    }
+    
+    if (attemptedReviewDays < 1 || attemptedReviewDays > 30 || solvedReviewDays < 1 || solvedReviewDays > 30) {
+        return res.status(400).json({ error: 'Review days must be between 1 and 30' });
+    }
+    
+    db.query(
+        'SELECT id FROM users WHERE email = ? AND id != ?',
+        [email, userId],
+        (err, results) => {
+            if (err) {
+                return res.status(500).json({ error: 'Database error' });
+            }
+            
+            if (results.length > 0) {
+                return res.status(400).json({ error: 'Email is already taken' });
+            }
+            
+            db.query(
+                'UPDATE users SET email = ?, first_name = ?, last_name = ?, attempted_review_days = ?, solved_review_days = ? WHERE id = ?',
+                [email, firstName, lastName, attemptedReviewDays, solvedReviewDays, userId],
+                (err, result) => {
+                    if (err) {
+                        return res.status(500).json({ error: 'Failed to update settings' });
+                    }
+                    
+                    if (result.affectedRows === 0) {
+                        return res.status(404).json({ error: 'User not found' });
+                    }
+                    
+                    res.json({
+                        success: true,
+                        message: 'Settings updated successfully'
+                    });
+                }
+            );
+        }
+    );
+});
+
+app.get('/', (req, res) => {
+    res.send('LeetCode Tracker API Server');
 });
 
 const PORT = process.env.PORT || 3001;

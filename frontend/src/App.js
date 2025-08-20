@@ -1,17 +1,21 @@
 import React, { useState, useEffect } from "react";
 import ToDoList from "./ToDoList";
 import Login from "./Login";
+import Settings from "./settings";
 import ApiService from "./api";
 
 function ProblemDetails({ problem, onBack, onNotesUpdate }) {
     const [notes, setNotes] = useState(problem.notes || "");
     const [isSaving, setIsSaving] = useState(false);
 
+    useEffect(() => {
+        setNotes(problem.notes || "");
+    }, [problem.notes]);
+
     const handleNotesChange = async (e) => {
         const newNotes = e.target.value;
         setNotes(newNotes);
         
-        // Auto-save notes after user stops typing
         setIsSaving(true);
         try {
             await ApiService.updateProblem(problem.id, {
@@ -45,7 +49,6 @@ function ProblemDetails({ problem, onBack, onNotesUpdate }) {
             backgroundColor: "#1a1a1a",
             minHeight: "100vh"
         }}>
-            {/* Header */}
             <div style={{ 
                 display: "flex", 
                 alignItems: "center", 
@@ -87,7 +90,6 @@ function ProblemDetails({ problem, onBack, onNotesUpdate }) {
                 </div>
             </div>
 
-            {/* Notes Section */}
             <div>
                 <div style={{ display: "flex", alignItems: "center", marginBottom: "1rem" }}>
                     <h2 style={{ color: "#FDFDFD", margin: 0, marginRight: "1rem" }}>Notes</h2>
@@ -127,12 +129,14 @@ function App() {
     const [currentView, setCurrentView] = useState("list");
     const [selectedProblem, setSelectedProblem] = useState(null);
     const [tasks, setTasks] = useState({});
+    const [userSettings, setUserSettings] = useState({
+        attemptedReviewDays: 3,
+        solvedReviewDays: 5
+    });
 
-    // Check if user is already logged in when app loads
     useEffect(() => {
         const token = localStorage.getItem('token');
         if (token) {
-            // Verify token and load user data
             loadUserData();
         } else {
             setIsLoading(false);
@@ -141,20 +145,27 @@ function App() {
 
     const loadUserData = async () => {
         try {
-            const response = await ApiService.getProblems();
-            setTasks(response.tasks);
+            const [problemsResponse, settingsResponse] = await Promise.all([
+                ApiService.getProblems(),
+                ApiService.getUserSettings()
+            ]);
             
-            // Set a basic user object (you might want to store user info separately)
+            setTasks(problemsResponse.tasks);
+            setUserSettings({
+                attemptedReviewDays: settingsResponse.settings.attemptedReviewDays,
+                solvedReviewDays: settingsResponse.settings.solvedReviewDays
+            });
+            
             const user = { 
-                email: 'current-user@example.com', // You'll need to get this from token or separate API call
-                firstName: 'User', 
-                lastName: 'Name',
-                tasks: response.tasks 
+                email: settingsResponse.user.email,
+                firstName: settingsResponse.user.firstName, 
+                lastName: settingsResponse.user.lastName,
+                tasks: problemsResponse.tasks,
+                ...settingsResponse.settings
             };
             setCurrentUser(user);
         } catch (error) {
             console.error('Failed to load user data:', error);
-            // Token might be invalid, clear it
             ApiService.removeToken();
         } finally {
             setIsLoading(false);
@@ -173,7 +184,6 @@ function App() {
                 };
                 setCurrentUser(user);
                 
-                // Load user's problems
                 await loadUserData();
                 
                 return { success: true };
@@ -195,7 +205,6 @@ function App() {
                 };
                 setCurrentUser(user);
                 
-                // Initialize empty tasks structure
                 const sections = [
                     "Arrays", "Two Pointers", "Stack", "Binary Search", 
                     "Sliding Window", "Linked List", "Trees", "Back Tracking", "DP"
@@ -223,41 +232,29 @@ function App() {
 
     const updateUserTasks = (newTasks) => {
         setTasks(newTasks);
-        // Update current user state
         const updatedUser = { ...currentUser, tasks: newTasks };
         setCurrentUser(updatedUser);
     };
 
-    const navigateToProblem = (problemName, section, problemIndex) => {
+    const handleUserUpdate = (updatedUser) => {
+        setCurrentUser(updatedUser);
+        setUserSettings({
+            attemptedReviewDays: updatedUser.attemptedReviewDays,
+            solvedReviewDays: updatedUser.solvedReviewDays
+        });
+    };
+
+    const handleProblemClick = (problemName, section, problemIndex) => {
         const problem = tasks[section][problemIndex];
         setSelectedProblem({ 
             ...problem, 
             section, 
             index: problemIndex 
         });
-        setCurrentView("problem");
+        setCurrentView("details");
     };
 
-    const navigateToList = () => {
-        setCurrentView("list");
-        setSelectedProblem(null);
-    };
-
-    const updateProblemNotes = (notes) => {
-        if (!selectedProblem) return;
-        
-        const { section, index } = selectedProblem;
-        const updatedTasks = { ...tasks };
-        updatedTasks[section][index] = {
-            ...updatedTasks[section][index],
-            notes: notes
-        };
-        
-        updateUserTasks(updatedTasks);
-        setSelectedProblem({ ...selectedProblem, notes });
-    };
-
-    const updateProblemStatus = async (section, index, newStatus) => {
+    const handleStatusUpdate = async (section, index, newStatus) => {
         try {
             const problem = tasks[section][index];
             await ApiService.updateProblem(problem.id, {
@@ -278,13 +275,29 @@ function App() {
         }
     };
 
+    const updateProblemNotes = (notes) => {
+        if (!selectedProblem) return;
+        
+        const { section, index } = selectedProblem;
+        const updatedTasks = { ...tasks };
+        updatedTasks[section][index] = {
+            ...updatedTasks[section][index],
+            notes: notes
+        };
+        
+        updateUserTasks(updatedTasks);
+        setSelectedProblem({ ...selectedProblem, notes });
+    };
+
     if (isLoading) {
         return (
-            <div style={{ 
-                textAlign: 'center', 
-                marginTop: '2rem',
-                color: '#333',
-                fontSize: '1.2rem'
+            <div style={{
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                minHeight: "100vh",
+                backgroundColor: "#1a1a1a",
+                color: "#FDFDFD"
             }}>
                 Loading...
             </div>
@@ -292,27 +305,32 @@ function App() {
     }
 
     return (
-        <div>
-            {currentUser ? (
-                currentView === "list" ? (
-                    <ToDoList 
-                        user={{ ...currentUser, tasks }}
-                        onTasksUpdate={updateUserTasks}
-                        onLogout={handleLogout}
-                        onProblemClick={navigateToProblem}
-                        onStatusUpdate={updateProblemStatus}
-                    />
-                ) : (
-                    <ProblemDetails 
-                        problem={selectedProblem}
-                        onBack={navigateToList}
-                        onNotesUpdate={updateProblemNotes}
-                    />
-                )
+        <div style={{ backgroundColor: "#1a1a1a", minHeight: "100vh" }}>
+            {!currentUser ? (
+                <Login onLogin={handleLogin} onSignup={handleSignup} />
+            ) : currentView === "settings" ? (
+                <Settings 
+                    user={currentUser} 
+                    onUserUpdate={handleUserUpdate}
+                    onBack={() => setCurrentView("list")}
+                />
+            ) : currentView === "details" ? (
+                <ProblemDetails 
+                    problem={selectedProblem}
+                    onBack={() => {
+                        setCurrentView("list");
+                        setSelectedProblem(null);
+                    }}
+                    onNotesUpdate={updateProblemNotes}
+                />
             ) : (
-                <Login 
-                    onLogin={handleLogin}
-                    onSignup={handleSignup}
+                <ToDoList 
+                    user={{ ...currentUser, userSettings }}
+                    onTasksUpdate={updateUserTasks}
+                    onLogout={handleLogout}
+                    onProblemClick={handleProblemClick}
+                    onStatusUpdate={handleStatusUpdate}
+                    onSettingsClick={() => setCurrentView("settings")}
                 />
             )}
         </div>

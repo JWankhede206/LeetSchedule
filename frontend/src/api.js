@@ -98,6 +98,16 @@ class ApiService {
             method: 'DELETE',
         });
     }
+    async getUserSettings() {
+        return this.request('/user/settings');
+    }
+    
+    async updateUserSettings(settingsData) {
+        return this.request('/user/settings', {
+            method: 'PUT',
+            body: JSON.stringify(settingsData),
+        });
+    }
 }
 
 export default new ApiService();
