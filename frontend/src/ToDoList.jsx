@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import ApiService from "./api";
 
-function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdate, onSettingsClick, onAnalyticsClick }) {
+function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdate, onSettingsClick}) {
 
     const sections = [
         "Arrays",
@@ -311,20 +311,6 @@ function ToDoList({ user, onTasksUpdate, onLogout, onProblemClick, onStatusUpdat
                     </p>
                 </div>
                 <div style={{ display: "flex", gap: "1rem" }}>
-                    <button
-                        onClick={onAnalyticsClick}
-                        style={{
-                            backgroundColor: "#FDFDFD",
-                            color: "#F99D07",
-                            border: "1px solid #F99D07",
-                            padding: "0.5rem 1rem",
-                            borderRadius: "5px",
-                            cursor: "pointer",
-                            fontWeight: "bold"
-                        }}
-                    >
-                        📊 Analytics
-                    </button>
                     <button
                         onClick={onSettingsClick}
                         style={{
